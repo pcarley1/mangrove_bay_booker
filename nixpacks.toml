@@ -1,8 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311", "python311Packages.pip", "chromium", "chromedriver"]
-
-[phases.install]
-cmds = ["pip install selenium"]
+nixPkgs = ["python311", "python311Packages.selenium", "chromium", "chromedriver"]
 
 [start]
 cmd = "python3 mangrove_bay_booker.py"
