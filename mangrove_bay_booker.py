@@ -2,11 +2,13 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
 from datetime import datetime, timedelta
 import time
 import logging
 import sys
 import os
+import subprocess
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -20,7 +22,7 @@ PLAYERS = os.environ.get("PLAYERS", "4")
 TARGET_DAYS_OUT = int(os.environ.get("TARGET_DAYS_OUT", "7"))
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "fktwoykpdpwwlcku")
 
-# --- LOGGING SETUP (stdout only for Railway — logs visible in dashboard) ---
+# --- LOGGING SETUP (stdout only for Railway) ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
@@ -40,7 +42,19 @@ options.add_experimental_option("excludeSwitches", ["enable-automation"])
 options.add_experimental_option("useAutomationExtension", False)
 options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-driver = webdriver.Chrome(options=options)
+# Locate nix-installed chromium and chromedriver
+try:
+    chromium_path = subprocess.check_output(["which", "chromium"]).decode().strip()
+    chromedriver_path = subprocess.check_output(["which", "chromedriver"]).decode().strip()
+    log.info(f"Found chromium: {chromium_path}")
+    log.info(f"Found chromedriver: {chromedriver_path}")
+    options.binary_location = chromium_path
+    service = Service(executable_path=chromedriver_path)
+    driver = webdriver.Chrome(service=service, options=options)
+except Exception as e:
+    log.error(f"Failed to launch Chrome: {e}")
+    sys.exit(1)
+
 driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
     "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
 })
@@ -57,7 +71,6 @@ def click_with_retry(selector, by=By.CSS_SELECTOR, attempts=3):
     return False
 
 def send_email(subject, body, screenshot_b64=None):
-    """Send Gmail notification with optional base64 screenshot attachment"""
     try:
         msg = MIMEMultipart()
         msg["From"] = EMAIL
@@ -161,7 +174,6 @@ try:
     wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '$')]")))
     time.sleep(2)
 
-    # Screenshot as bytes (no file system needed)
     preclick_screenshot = driver.get_screenshot_as_base64()
     log.info("Pre-click screenshot captured.")
 
