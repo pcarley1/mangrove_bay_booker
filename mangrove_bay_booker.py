@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime, timedelta
 import time
 import logging
@@ -44,15 +45,10 @@ options.add_experimental_option("excludeSwitches", ["enable-automation"])
 options.add_experimental_option("useAutomationExtension", False)
 options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-# Locate nix-installed chromium and chromedriver
 try:
-    chromium_path = subprocess.check_output(["which", "chromium"]).decode().strip()
-    chromedriver_path = subprocess.check_output(["which", "chromedriver"]).decode().strip()
-    log.info(f"Found chromium: {chromium_path}")
-    log.info(f"Found chromedriver: {chromedriver_path}")
-    options.binary_location = chromium_path
-    service = Service(executable_path=chromedriver_path)
+    service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
+    log.info("Chrome launched successfully via webdriver-manager.")
 except Exception as e:
     log.error(f"Failed to launch Chrome: {e}")
     sys.exit(1)
