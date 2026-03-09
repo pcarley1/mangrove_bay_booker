@@ -1,29 +1,23 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from datetime import datetime, timedelta
-import time
-import logging
-import sys
 import os
-import subprocess
+import sys
+import logging
 import smtplib
+import base64
+from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
-# --- CONFIGURATION (use Railway environment variables) ---
+# --- CONFIGURATION ---
 EMAIL = os.environ.get("EMAIL", "pcarley1@gmail.com")
 PASSWORD = os.environ.get("GOLF_PASSWORD", "Dklounge1$")
 PLAYERS = os.environ.get("PLAYERS", "4")
 TARGET_DAYS_OUT = int(os.environ.get("TARGET_DAYS_OUT", "7"))
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "fktwoykpdpwwlcku")
 
-# --- LOGGING SETUP (stdout only for Railway) ---
+# --- LOGGING ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
@@ -31,38 +25,8 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-options = webdriver.ChromeOptions()
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--window-size=1920,1080")
-options.add_argument("--disable-gpu")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option("useAutomationExtension", False)
-options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
-try:
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    log.info("Chrome launched successfully via webdriver-manager.")
-except Exception as e:
-    log.error(f"Failed to launch Chrome: {e}")
-    sys.exit(1)
-
-
-def click_with_retry(selector, by=By.CSS_SELECTOR, attempts=3):
-    for i in range(attempts):
-        try:
-            element = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((by, selector)))
-            driver.execute_script("arguments[0].click();", element)
-            return True
-        except Exception:
-            time.sleep(1.5)
-            continue
-    return False
-
-def send_email(subject, body, screenshot_b64=None):
+def send_email(subject, body, screenshot_bytes=None):
     try:
         msg = MIMEMultipart()
         msg["From"] = EMAIL
@@ -70,10 +34,10 @@ def send_email(subject, body, screenshot_b64=None):
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        if screenshot_b64:
+        if screenshot_bytes:
             try:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(screenshot_b64)
+                part = MIMEBase("image", "png")
+                part.set_payload(screenshot_bytes)
                 encoders.encode_base64(part)
                 part.add_header("Content-Disposition", "attachment; filename=screenshot.png")
                 msg.attach(part)
@@ -87,140 +51,158 @@ def send_email(subject, body, screenshot_b64=None):
     except Exception as e:
         log.warning(f"Email notification failed (non-fatal): {e}")
 
-try:
-    log.info("Starting tee time booking script...")
 
-    driver.get("https://golfstpete.com/mangrove-bay/")
-    wait = WebDriverWait(driver, 15)
-    btn = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "BOOK A TEE TIME")))
-    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-    btn.click()
-    time.sleep(3)
-
-    if len(driver.window_handles) > 1:
-        driver.switch_to.window(driver.window_handles[-1])
-        log.info("Switched to new tab.")
-    else:
-        log.info("Page loaded inline (no new tab).")
-
-    try:
-        pub_btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Public')]")))
-        pub_btn.click()
-        log.info("Clicked Public button.")
-    except Exception:
-        log.info("No Public button found, continuing.")
-    time.sleep(3)
-
+def run():
     target_date = datetime.now() + timedelta(days=TARGET_DAYS_OUT)
     day_to_select = target_date.strftime("%d").lstrip("0")
-    log.info(f"Selecting date: {target_date.strftime('%Y-%m-%d')} (day={day_to_select})")
-    day_xpath = f"//td[contains(@class, 'day') and not(contains(@class, 'old')) and text()='{day_to_select}']"
-    wait.until(EC.element_to_be_clickable((By.XPATH, day_xpath))).click()
+    log.info(f"Target date: {target_date.strftime('%Y-%m-%d')} (day={day_to_select})")
 
-    player_clicked = False
-    for player_sel in [
-        f"a.ob-filters-btn[data-value='{PLAYERS}']",
-        f"//a[contains(@class,'ob-filters-btn') and @data-value='{PLAYERS}']",
-        f"//*[contains(@class,'filters') and text()='{PLAYERS}']",
-        f"//button[normalize-space()='{PLAYERS}']",
-    ]:
-        try:
-            by = By.XPATH if player_sel.startswith("//") else By.CSS_SELECTOR
-            WebDriverWait(driver, 5).until(EC.element_to_be_clickable((by, player_sel))).click()
-            player_clicked = True
-            log.info(f"Filtered by {PLAYERS} players using selector: {player_sel}")
-            break
-        except Exception:
-            continue
-    if not player_clicked:
-        log.warning("Could not click player filter — proceeding without it.")
-
-    time_slots = wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, "time-summary-ob")))
-    if time_slots:
-        driver.execute_script("arguments[0].click();", time_slots[0])
-        log.info(f"Selected first available time slot ({len(time_slots)} found).")
-    else:
-        raise Exception("No time slots found!")
-
-    wait.until(EC.visibility_of_element_located((By.NAME, "email"))).send_keys(EMAIL)
-    driver.find_element(By.NAME, "password").send_keys(PASSWORD)
-    driver.find_element(By.XPATH, "//button[contains(., 'Log In')]").click()
-    log.info("Logged in.")
-
-    click_with_retry("div[aria-label='18 Holes']")
-    log.info("Selected 18 holes.")
-
-    click_with_retry(f"div[aria-label='{PLAYERS} Players']")
-    log.info(f"Confirmed {PLAYERS} players.")
-
-    click_with_retry("div[aria-label='Yes, I need a cart']")
-    log.info("Confirmed cart.")
-
-    try:
-        dismiss = driver.find_element(By.XPATH, "//*[contains(text(), 'You are only allowed')]/..//button | //*[contains(text(), 'You are only allowed')]//following-sibling::*[@role='button']")
-        dismiss.click()
-        log.warning("Dismissed reservation limit banner.")
-    except Exception:
-        pass
-
-    wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '$')]")))
-    time.sleep(2)
-
-    try:
-        checkbox = driver.find_element(By.ID, "notes-accepted")
-        if checkbox.is_displayed() and not checkbox.is_selected():
-            driver.execute_script("arguments[0].click();", checkbox)
-            log.info("Checked booking conditions checkbox.")
-    except Exception:
-        pass
-
-    preclick_screenshot = driver.get_screenshot_as_base64()
-    log.info("Pre-click screenshot captured.")
-
-    try:
-        book_btn = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.book")))
-        driver.execute_script("arguments[0].scrollIntoView(true);", book_btn)
-        time.sleep(1)
-        driver.execute_script("arguments[0].click();", book_btn)
-        log.info("Clicked Book Time button.")
-    except Exception as e:
-        raise Exception(f"Could not click Book Time button: {e}")
-
-    log.info("Waiting for confirmation page...")
-    try:
-        wait_confirm = WebDriverWait(driver, 20)
-        wait_confirm.until(EC.any_of(
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Confirmation')]")),
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'confirmation')]")),
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Thank you')]")),
-            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Booked')]")),
-        ))
-        log.info("Confirmation page detected!")
-    except Exception:
-        log.warning("Could not detect confirmation text — check screenshot.")
-
-    time.sleep(3)
-    confirmation_screenshot = driver.get_screenshot_as_base64()
-    log.info("SUCCESS! Tee time booked.")
-
-    send_email(
-        subject="⛳ Tee Time Booked - Mangrove Bay!",
-        body=f"Your tee time has been successfully booked!\n\nDate: {target_date.strftime('%A, %B %d')}\nPlayers: {PLAYERS}\nHoles: 18\nCourse: Mangrove Bay\n\nSee attached screenshot for confirmation details.",
-        screenshot_b64=confirmation_screenshot
-    )
-
-except Exception as e:
-    log.error(f"FAILED: {e}")
-    try:
-        error_screenshot = driver.get_screenshot_as_base64()
-        send_email(
-            subject="❌ Tee Time Booking FAILED",
-            body=f"The tee time booking script failed.\n\nError: {e}",
-            screenshot_b64=error_screenshot
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
         )
-    except Exception as email_err:
-        log.warning(f"Failure email could not be sent: {email_err}")
-    sys.exit(1)
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+        screenshot_bytes = None
 
-finally:
-    driver.quit()
+        try:
+            log.info("Starting tee time booking script...")
+
+            # --- Navigate to booking page ---
+            page.goto("https://golfstpete.com/mangrove-bay/", wait_until="domcontentloaded")
+            page.get_by_partial_text = None  # reset
+            page.locator("a", has_text="BOOK A TEE TIME").first.click()
+            log.info("Clicked Book a Tee Time.")
+
+            # Handle new tab
+            with context.expect_page(timeout=5000) as new_page_info:
+                pass
+            booking_page = new_page_info.value
+            booking_page.wait_for_load_state("domcontentloaded")
+            log.info("Switched to booking tab.")
+
+            # --- Public booking class ---
+            try:
+                booking_page.locator("button", has_text="Public").click(timeout=5000)
+                log.info("Clicked Public button.")
+            except PlaywrightTimeout:
+                log.info("No Public button found, continuing.")
+
+            # --- Select date ---
+            booking_page.wait_for_selector("td.day", timeout=15000)
+            day_cell = booking_page.locator(f"td.day:not(.old):not(.disabled)", has_text=day_to_select).first
+            day_cell.click()
+            log.info(f"Selected date: {target_date.strftime('%Y-%m-%d')}")
+
+            # --- Filter by players ---
+            try:
+                booking_page.locator(f"a.ob-filters-btn[data-value='{PLAYERS}']").click(timeout=5000)
+                log.info(f"Filtered by {PLAYERS} players.")
+            except PlaywrightTimeout:
+                log.warning("Could not click player filter — proceeding without it.")
+
+            # --- Select first time slot ---
+            booking_page.wait_for_selector(".time-summary-ob", timeout=15000)
+            slots = booking_page.locator(".time-summary-ob")
+            count = slots.count()
+            if count == 0:
+                raise Exception("No time slots found!")
+            slots.first.click()
+            log.info(f"Selected first available time slot ({count} found).")
+
+            # --- Log in ---
+            booking_page.wait_for_selector("input[name='email']", timeout=10000)
+            booking_page.fill("input[name='email']", EMAIL)
+            booking_page.fill("input[name='password']", PASSWORD)
+            booking_page.locator("button", has_text="Log In").click()
+            log.info("Logged in.")
+
+            # --- Select 18 holes ---
+            try:
+                booking_page.locator("a.btn", has_text="18").click(timeout=8000)
+                log.info("Selected 18 holes.")
+            except PlaywrightTimeout:
+                log.warning("Could not select 18 holes.")
+
+            # --- Select players ---
+            try:
+                booking_page.locator(f"a.btn", has_text=PLAYERS).click(timeout=8000)
+                log.info(f"Confirmed {PLAYERS} players.")
+            except PlaywrightTimeout:
+                log.warning(f"Could not confirm {PLAYERS} players.")
+
+            # --- Select cart ---
+            try:
+                booking_page.locator("a.btn[data-value='yes']").click(timeout=8000)
+                log.info("Confirmed cart.")
+            except PlaywrightTimeout:
+                log.warning("Could not confirm cart.")
+
+            # --- Dismiss reservation limit banner if present ---
+            try:
+                booking_page.locator("text=You are only allowed").locator("..").locator("button").click(timeout=3000)
+                log.warning("Dismissed reservation limit banner.")
+            except PlaywrightTimeout:
+                pass
+
+            # --- Wait for price to load ---
+            booking_page.wait_for_selector("text=$", timeout=15000)
+
+            # --- Accept booking conditions if present ---
+            try:
+                checkbox = booking_page.locator("#notes-accepted")
+                if checkbox.is_visible() and not checkbox.is_checked():
+                    checkbox.click()
+                    log.info("Checked booking conditions checkbox.")
+            except Exception:
+                pass
+
+            # --- Screenshot before booking ---
+            screenshot_bytes = booking_page.screenshot()
+            log.info("Pre-click screenshot captured.")
+
+            # --- Click Book Time ---
+            booking_page.locator("button.book").click(timeout=15000)
+            log.info("Clicked Book Time button.")
+
+            # --- Wait for confirmation ---
+            try:
+                booking_page.wait_for_selector(
+                    "text=reservation has been booked, text=Confirmation, text=Thank you, text=Booked",
+                    timeout=20000
+                )
+                log.info("Confirmation page detected!")
+            except PlaywrightTimeout:
+                log.warning("Could not detect confirmation text — check screenshot.")
+
+            confirmation_bytes = booking_page.screenshot()
+            log.info("SUCCESS! Tee time booked.")
+
+            send_email(
+                subject="Tee Time Booked - Mangrove Bay!",
+                body=f"Your tee time has been successfully booked!\n\nDate: {target_date.strftime('%A, %B %d')}\nPlayers: {PLAYERS}\nHoles: 18\nCourse: Mangrove Bay\n\nSee attached screenshot for confirmation details.",
+                screenshot_bytes=confirmation_bytes
+            )
+
+        except Exception as e:
+            log.error(f"FAILED: {e}")
+            try:
+                screenshot_bytes = booking_page.screenshot()
+            except Exception:
+                pass
+            send_email(
+                subject="Tee Time Booking FAILED",
+                body=f"The tee time booking script failed.\n\nError: {e}",
+                screenshot_bytes=screenshot_bytes
+            )
+            sys.exit(1)
+
+        finally:
+            browser.close()
+
+
+run()
