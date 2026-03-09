@@ -105,6 +105,7 @@ def run():
             # --- Filter by players ---
             try:
                 booking_page.locator(f"a.ob-filters-btn[data-value='{PLAYERS}']").click(timeout=5000)
+                booking_page.wait_for_load_state("networkidle")
                 log.info(f"Filtered by {PLAYERS} players.")
             except PlaywrightTimeout:
                 log.warning("Could not click player filter — proceeding without it.")
@@ -125,20 +126,24 @@ def run():
             booking_page.locator("button", has_text="Log In").click()
             booking_page.wait_for_load_state("networkidle")
             log.info("Logged in.")
-            # DEBUG - remove after fix
-            log.info("POST-LOGIN HTML:")
-            log.info(booking_page.inner_html("body"))
+
+            # --- Select 18 holes ---
+            try:
+                booking_page.locator("label:has(input[name='holes'][value='18'])").click(timeout=8000)
+                log.info("Selected 18 holes.")
+            except PlaywrightTimeout:
+                log.warning("Could not select 18 holes.")
 
             # --- Select players ---
             try:
-                booking_page.locator(f".btn-group.players a.btn[data-value='{PLAYERS}']").click(timeout=8000)
+                booking_page.locator(f"label:has(input[name='players'][value='{PLAYERS}'])").click(timeout=8000)
                 log.info(f"Confirmed {PLAYERS} players.")
             except PlaywrightTimeout:
                 log.warning(f"Could not confirm {PLAYERS} players.")
 
             # --- Select cart ---
             try:
-                booking_page.locator(".btn-group.carts a.btn[data-value='yes']").click(timeout=8000)
+                booking_page.locator("label:has(input[name='carts'][value='true'])").click(timeout=8000)
                 log.info("Confirmed cart.")
             except PlaywrightTimeout:
                 log.warning("Could not confirm cart.")
@@ -167,7 +172,8 @@ def run():
             log.info("Pre-click screenshot captured.")
 
             # --- Click Book Time ---
-            booking_page.locator("button.book").click(timeout=15000)
+            booking_page.wait_for_selector("button.ob-book-time-continue-button:not([disabled])", timeout=15000)
+            booking_page.locator("button.ob-book-time-continue-button").click(timeout=15000)
             log.info("Clicked Book Time button.")
 
             # --- Wait for confirmation ---
