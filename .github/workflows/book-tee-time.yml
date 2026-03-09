@@ -1,0 +1,36 @@
+name: Book Tee Time
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # runs daily at 7am UTC — adjust to your needs
+  workflow_dispatch:       # allows manual "Run Now" from GitHub UI
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-driver
+          sudo ln -sf /usr/bin/chromium-browser /usr/local/bin/chromium
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run booking script
+        env:
+          EMAIL: ${{ secrets.EMAIL }}
+          GOLF_PASSWORD: ${{ secrets.GOLF_PASSWORD }}
+          PLAYERS: ${{ secrets.PLAYERS }}
+          TARGET_DAYS_OUT: ${{ secrets.TARGET_DAYS_OUT }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python3 mangrove_bay_booker.py
