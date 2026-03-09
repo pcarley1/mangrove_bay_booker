@@ -19,10 +19,7 @@ jobs:
 
       - name: Install ChromeDriver
         run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-chromedriver
-          sudo ln -sf /usr/bin/google-chrome /usr/local/bin/chromium
-          sudo ln -sf /usr/bin/chromedriver /usr/local/bin/chromedriver
+          pip install webdriver-manager
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
