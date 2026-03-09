@@ -1,9 +1,7 @@
-from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime, timedelta
 import time
 import logging
@@ -31,22 +29,15 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# --- CHROME OPTIONS (Linux/Railway compatible) ---
-options = webdriver.ChromeOptions()
-options.add_argument("--headless")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--window-size=1920,1080")
-options.add_argument("--disable-gpu")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option("useAutomationExtension", False)
-options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-
 try:
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    log.info("Chrome launched successfully via webdriver-manager.")
+    options = uc.ChromeOptions()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-gpu")
+    driver = uc.Chrome(options=options)
+    log.info("Chrome launched successfully via undetected-chromedriver.")
 except Exception as e:
     log.error(f"Failed to launch Chrome: {e}")
     sys.exit(1)
@@ -178,9 +169,14 @@ try:
     preclick_screenshot = driver.get_screenshot_as_base64()
     log.info("Pre-click screenshot captured.")
 
-    clicked = click_with_retry("button.book")
-    if not clicked:
-        raise Exception("Could not click Book Time button.")
+    try:
+        book_btn = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "button.book")))
+        driver.execute_script("arguments[0].scrollIntoView(true);", book_btn)
+        time.sleep(1)
+        driver.execute_script("arguments[0].click();", book_btn)
+        log.info("Clicked Book Time button.")
+    except Exception as e:
+        raise Exception(f"Could not click Book Time button: {e}")
 
     log.info("Waiting for confirmation page...")
     try:
