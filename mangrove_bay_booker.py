@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import logging
 import smtplib
 import base64
@@ -94,7 +95,9 @@ def run():
 
             # --- Select date ---
             booking_page.wait_for_selector("td.day", timeout=15000)
-            day_cell = booking_page.locator(f"td.day:not(.old):not(.disabled)", has_text=day_to_select).first
+            day_cell = booking_page.locator("td.day:not(.old):not(.disabled)").filter(
+                has_text=re.compile(rf"^\s*{re.escape(day_to_select)}\s*$")
+            ).first
             day_cell.click()
             log.info(f"Selected date: {target_date.strftime('%Y-%m-%d')}")
 
@@ -119,25 +122,19 @@ def run():
             booking_page.fill("input[name='email']", EMAIL)
             booking_page.fill("input[name='password']", PASSWORD)
             booking_page.locator("button", has_text="Log In").click()
+            booking_page.wait_for_load_state("networkidle")
             log.info("Logged in.")
-
-            # --- Select 18 holes ---
-            try:
-                booking_page.locator("a.btn", has_text="18").click(timeout=8000)
-                log.info("Selected 18 holes.")
-            except PlaywrightTimeout:
-                log.warning("Could not select 18 holes.")
 
             # --- Select players ---
             try:
-                booking_page.locator(f"a.btn", has_text=PLAYERS).click(timeout=8000)
+                booking_page.locator(f".btn-group.players a.btn[data-value='{PLAYERS}']").click(timeout=8000)
                 log.info(f"Confirmed {PLAYERS} players.")
             except PlaywrightTimeout:
                 log.warning(f"Could not confirm {PLAYERS} players.")
 
             # --- Select cart ---
             try:
-                booking_page.locator("a.btn[data-value='yes']").click(timeout=8000)
+                booking_page.locator(".btn-group.carts a.btn[data-value='yes']").click(timeout=8000)
                 log.info("Confirmed cart.")
             except PlaywrightTimeout:
                 log.warning("Could not confirm cart.")
