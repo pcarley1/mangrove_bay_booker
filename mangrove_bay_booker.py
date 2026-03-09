@@ -30,13 +30,16 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 try:
+    chrome_version = subprocess.check_output(["google-chrome", "--version"]).decode().strip()
+    version_main = int(chrome_version.split()[-1].split(".")[0])
+    log.info(f"Detected Chrome version: {version_main}")
     options = uc.ChromeOptions()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-gpu")
-    driver = uc.Chrome(options=options)
+    driver = uc.Chrome(options=options, version_main=version_main)
     log.info("Chrome launched successfully via undetected-chromedriver.")
 except Exception as e:
     log.error(f"Failed to launch Chrome: {e}")
