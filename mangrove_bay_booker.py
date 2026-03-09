@@ -167,13 +167,18 @@ try:
     wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), '$')]")))
     time.sleep(2)
 
+    try:
+        checkbox = driver.find_element(By.ID, "notes-accepted")
+        if checkbox.is_displayed() and not checkbox.is_selected():
+            driver.execute_script("arguments[0].click();", checkbox)
+            log.info("Checked booking conditions checkbox.")
+    except Exception:
+        pass
+
     preclick_screenshot = driver.get_screenshot_as_base64()
     log.info("Pre-click screenshot captured.")
 
-    book_btn_xpath = "//button[normalize-space()='Book Time'] | //*[contains(@class,'book') and normalize-space()='Book Time']"
-    clicked = click_with_retry(book_btn_xpath, by=By.XPATH)
-    if not clicked:
-        clicked = click_with_retry(".ob-book-time-continue-button")
+    clicked = click_with_retry("button.book")
     if not clicked:
         raise Exception("Could not click Book Time button.")
 
