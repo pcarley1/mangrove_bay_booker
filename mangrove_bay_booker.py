@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 
 # --- CHROME OPTIONS (Linux/Railway compatible) ---
 options = webdriver.ChromeOptions()
-options.add_argument("--headless=new")
+options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--window-size=1920,1080")
@@ -57,9 +57,6 @@ except Exception as e:
     log.error(f"Failed to launch Chrome: {e}")
     sys.exit(1)
 
-driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-    "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-})
 
 def click_with_retry(selector, by=By.CSS_SELECTOR, attempts=3):
     for i in range(attempts):
