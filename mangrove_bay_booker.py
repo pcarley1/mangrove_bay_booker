@@ -99,6 +99,7 @@ def run():
                 has_text=re.compile(rf"^\s*{re.escape(day_to_select)}\s*$")
             ).first
             day_cell.click()
+            booking_page.wait_for_load_state("networkidle")
             log.info(f"Selected date: {target_date.strftime('%Y-%m-%d')}")
 
             # --- Filter by players ---
@@ -124,6 +125,9 @@ def run():
             booking_page.locator("button", has_text="Log In").click()
             booking_page.wait_for_load_state("networkidle")
             log.info("Logged in.")
+            # DEBUG - remove after fix
+            log.info("POST-LOGIN HTML:")
+            log.info(booking_page.inner_html("body"))
 
             # --- Select players ---
             try:
