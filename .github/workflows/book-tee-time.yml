@@ -2,7 +2,7 @@ name: Book Tee Time
 
 on:
   schedule:
-    - cron: '0 7 * * *'  # runs daily at 7am UTC — adjust to your needs
+    - cron: '59 9 * * 6,0'  # runs at 5:59am EST (9:59am UTC) on Saturdays and Sundays
   workflow_dispatch:       # allows manual "Run Now" from GitHub UI
 
 jobs:
