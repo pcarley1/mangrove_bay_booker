@@ -1,5 +1,6 @@
 [phases.setup]
-nixPkgs = ["python311", "chromium", "chromedriver"]
+nixPkgs = ["python311"]
+aptPkgs = ["chromium", "chromium-driver"]
 
 [start]
 cmd = "python3 mangrove_bay_booker.py"
