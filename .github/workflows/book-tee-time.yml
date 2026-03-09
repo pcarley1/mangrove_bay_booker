@@ -17,9 +17,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install ChromeDriver
-        run: |
-          pip install webdriver-manager
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
